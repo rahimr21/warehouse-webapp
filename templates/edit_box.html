@@ -1,0 +1,485 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Box - Warehouse Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .content-section {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-bottom: 1rem;
+    }
+    .product-row {
+        margin-bottom: 0.5rem;
+    }
+    .remove-row {
+        color: #dc3545;
+        cursor: pointer;
+    }
+    .box-type-section {
+        background-color: #e3f2fd;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-bottom: 1rem;
+    }
+    .simple-box-section {
+        background-color: #fff3e0;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <h1 class="mb-4">Edit Box</h1>
+        
+        <form method="POST" action="{{ url_for('edit_box', box_id=box.id) }}">
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="box_number" class="form-label">Box Number *</label>
+                    <input type="text" class="form-control" id="box_number" name="box_number" value="{{ box.box_number }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="weight" class="form-label">Weight (lbs) *</label>
+                    <input type="number" step="0.01" class="form-control" id="weight" name="weight" value="{{ box.weight }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="container_id" class="form-label">Assign to Container</label>
+                    <select class="form-control" id="container_id" name="container_id">
+                        <option value="">No Container</option>
+                        {% for container in containers %}
+                            <option value="{{ container.id }}" {{ 'selected' if box.container_id == container.id else '' }}>{{ container.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="box-type-section">
+                <h5 class="mb-3">Box Type</h5>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="box_type" id="detailed" value="detailed" {{ 'checked' if box.box_type == 'detailed' else '' }} onchange="toggleBoxType()">
+                    <label class="form-check-label" for="detailed">
+                        Detailed (Bottom/Middle/Top sections)
+                    </label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="box_type" id="simple" value="simple" {{ 'checked' if box.box_type == 'simple' else '' }} onchange="toggleBoxType()">
+                    <label class="form-check-label" for="simple">
+                        Simple (Total quantities only)
+                    </label>
+                </div>
+            </div>
+
+            <div id="detailed-sections" {% if box.box_type == 'simple' %}style="display:none;"{% endif %}>
+                {% for section in ['bottom', 'middle', 'top'] %}
+                <div class="content-section">
+                    <h5 class="mb-3">{{ section|title }} Section</h5>
+                    <div id="{{ section }}-products">
+                        {% set section_contents = box.contents|selectattr('section', 'equalto', section)|list %}
+                        {% if section_contents %}
+                            {% for content in section_contents %}
+                            <div class="product-row row">
+                                <div class="col-md-4">
+                                    <select class="form-control product-select" name="{{ section }}_product[]" onchange="handleProductSelect(this)">
+                                        <option value="">Select Product Type</option>
+                                        {% for product in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] %}
+                                            <option value="{{ product }}" {{ 'selected' if content.product_type == product else '' }}>{{ product }}</option>
+                                        {% endfor %}
+                                        <option value="Other" {{ 'selected' if content.product_type not in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] else '' }}>Other (specify)</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-product" name="{{ section }}_product[]" placeholder="Custom Product Type" 
+                                           value="{{ content.product_type if content.product_type not in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] else '' }}"
+                                           style="display: {{ 'block' if content.product_type not in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] else 'none' }};">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" class="form-control" name="{{ section }}_quantity[]" placeholder="Quantity" value="{{ content.quantity }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-control lcd-size-select" name="{{ section }}_lcd_size[]" style="display: {{ 'block' if content.product_type == 'LCDs' else 'none' }};" onchange="handleLcdSizeSelect(this)">
+                                        <option value="">Select LCD Size</option>
+                                        {% for size in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] %}
+                                            <option value="{{ size }}" {{ 'selected' if content.lcd_size == size else '' }}>{{ size }}</option>
+                                        {% endfor %}
+                                        <option value="Custom" {{ 'selected' if content.lcd_size and content.lcd_size not in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] else '' }}>Custom Size</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-lcd-size" name="{{ section }}_lcd_size[]" placeholder="Custom LCD Size" 
+                                           value="{{ content.lcd_size if content.lcd_size and content.lcd_size not in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] else '' }}"
+                                           style="display: {{ 'block' if content.lcd_size and content.lcd_size not in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] else 'none' }};">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="product-row row">
+                                <div class="col-md-4">
+                                    <select class="form-control product-select" name="{{ section }}_product[]" onchange="handleProductSelect(this)">
+                                        <option value="">Select Product Type</option>
+                                        <option value="Laptops">Laptops</option>
+                                        <option value="PCs">PCs</option>
+                                        <option value="LCDs">LCDs</option>
+                                        <option value="Servers">Servers</option>
+                                        <option value="Switches">Switches</option>
+                                        <option value="Wires">Wires</option>
+                                        <option value="Keyboards">Keyboards</option>
+                                        <option value="Stands">Stands</option>
+                                        <option value="Other">Other (specify)</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-product" name="{{ section }}_product[]" placeholder="Custom Product Type" style="display: none;">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" class="form-control" name="{{ section }}_quantity[]" placeholder="Quantity">
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-control lcd-size-select" name="{{ section }}_lcd_size[]" style="display: none;" onchange="handleLcdSizeSelect(this)">
+                                        <option value="">Select LCD Size</option>
+                                        <option value="17&quot;S">17"S</option>
+                                        <option value="17&quot;W">17"W</option>
+                                        <option value="19&quot;S">19"S</option>
+                                        <option value="19&quot;W">19"W</option>
+                                        <option value="20&quot;S">20"S</option>
+                                        <option value="20&quot;W">20"W</option>
+                                        <option value="22&quot;">22"</option>
+                                        <option value="23&quot;">23"</option>
+                                        <option value="24&quot;">24"</option>
+                                        <option value="Borderless 24&quot;">Borderless 24"</option>
+                                        <option value="Custom">Custom Size</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-lcd-size" name="{{ section }}_lcd_size[]" placeholder="Custom LCD Size" style="display: none;">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                    <button type="button" class="btn btn-outline-primary mt-2" onclick="addProductRow('{{ section }}')">
+                        Add Product
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div id="simple-section" class="simple-box-section" {% if box.box_type == 'simple' %}style="display:block;"{% else %}style="display:none;"{% endif %}>
+                <h5 class="mb-3">Product Contents</h5>
+                <div id="simple-products">
+                    {% if box.box_type == 'simple' %}
+                        {% set simple_contents = box.contents|selectattr('section', 'equalto', 'total')|list %}
+                        {% if simple_contents %}
+                            {% for content in simple_contents %}
+                            <div class="product-row row">
+                                <div class="col-md-4">
+                                    <select class="form-control product-select" name="simple_product[]" onchange="handleProductSelect(this)">
+                                        <option value="">Select Product Type</option>
+                                        {% for product in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] %}
+                                            <option value="{{ product }}" {{ 'selected' if content.product_type == product else '' }}>{{ product }}</option>
+                                        {% endfor %}
+                                        <option value="Other" {{ 'selected' if content.product_type not in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] else '' }}>Other (specify)</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-product" name="simple_product[]" placeholder="Custom Product Type" 
+                                           value="{{ content.product_type if content.product_type not in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] else '' }}"
+                                           style="display: {{ 'block' if content.product_type not in ['Laptops', 'PCs', 'LCDs', 'Servers', 'Switches', 'Wires', 'Keyboards', 'Stands'] else 'none' }};">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" class="form-control" name="simple_quantity[]" placeholder="Total Quantity" value="{{ content.quantity }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-control lcd-size-select" name="simple_lcd_size[]" style="display: {{ 'block' if content.product_type == 'LCDs' else 'none' }};" onchange="handleLcdSizeSelect(this)">
+                                        <option value="">Select LCD Size</option>
+                                        {% for size in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] %}
+                                            <option value="{{ size }}" {{ 'selected' if content.lcd_size == size else '' }}>{{ size }}</option>
+                                        {% endfor %}
+                                        <option value="Custom" {{ 'selected' if content.lcd_size and content.lcd_size not in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] else '' }}>Custom Size</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-lcd-size" name="simple_lcd_size[]" placeholder="Custom LCD Size" 
+                                           value="{{ content.lcd_size if content.lcd_size and content.lcd_size not in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] else '' }}"
+                                           style="display: {{ 'block' if content.lcd_size and content.lcd_size not in ['17"S', '17"W', '19"S', '19"W', '20"S', '20"W', '22"', '23"', '24"', 'Borderless 24"'] else 'none' }};">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="product-row row">
+                                <div class="col-md-4">
+                                    <select class="form-control product-select" name="simple_product[]" onchange="handleProductSelect(this)">
+                                        <option value="">Select Product Type</option>
+                                        <option value="Laptops">Laptops</option>
+                                        <option value="PCs">PCs</option>
+                                        <option value="LCDs">LCDs</option>
+                                        <option value="Servers">Servers</option>
+                                        <option value="Switches">Switches</option>
+                                        <option value="Wires">Wires</option>
+                                        <option value="Keyboards">Keyboards</option>
+                                        <option value="Stands">Stands</option>
+                                        <option value="Other">Other (specify)</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-product" name="simple_product[]" placeholder="Custom Product Type" style="display: none;">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" class="form-control" name="simple_quantity[]" placeholder="Total Quantity">
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-control lcd-size-select" name="simple_lcd_size[]" style="display: none;" onchange="handleLcdSizeSelect(this)">
+                                        <option value="">Select LCD Size</option>
+                                        <option value="17&quot;S">17"S</option>
+                                        <option value="17&quot;W">17"W</option>
+                                        <option value="19&quot;S">19"S</option>
+                                        <option value="19&quot;W">19"W</option>
+                                        <option value="20&quot;S">20"S</option>
+                                        <option value="20&quot;W">20"W</option>
+                                        <option value="22&quot;">22"</option>
+                                        <option value="23&quot;">23"</option>
+                                        <option value="24&quot;">24"</option>
+                                        <option value="Borderless 24&quot;">Borderless 24"</option>
+                                        <option value="Custom">Custom Size</option>
+                                    </select>
+                                    <input type="text" class="form-control mt-1 custom-lcd-size" name="simple_lcd_size[]" placeholder="Custom LCD Size" style="display: none;">
+                                </div>
+                                <div class="col-md-2">
+                                    <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="product-row row">
+                            <div class="col-md-4">
+                                <select class="form-control product-select" name="simple_product[]" onchange="handleProductSelect(this)">
+                                    <option value="">Select Product Type</option>
+                                    <option value="Laptops">Laptops</option>
+                                    <option value="PCs">PCs</option>
+                                    <option value="LCDs">LCDs</option>
+                                    <option value="Servers">Servers</option>
+                                    <option value="Switches">Switches</option>
+                                    <option value="Wires">Wires</option>
+                                    <option value="Keyboards">Keyboards</option>
+                                    <option value="Stands">Stands</option>
+                                    <option value="Other">Other (specify)</option>
+                                </select>
+                                <input type="text" class="form-control mt-1 custom-product" name="simple_product[]" placeholder="Custom Product Type" style="display: none;">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control" name="simple_quantity[]" placeholder="Total Quantity">
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-control lcd-size-select" name="simple_lcd_size[]" style="display: none;" onchange="handleLcdSizeSelect(this)">
+                                    <option value="">Select LCD Size</option>
+                                    <option value="17&quot;S">17"S</option>
+                                    <option value="17&quot;W">17"W</option>
+                                    <option value="19&quot;S">19"S</option>
+                                    <option value="19&quot;W">19"W</option>
+                                    <option value="20&quot;S">20"S</option>
+                                    <option value="20&quot;W">20"W</option>
+                                    <option value="22&quot;">22"</option>
+                                    <option value="23&quot;">23"</option>
+                                    <option value="24&quot;">24"</option>
+                                    <option value="Borderless 24&quot;">Borderless 24"</option>
+                                    <option value="Custom">Custom Size</option>
+                                </select>
+                                <input type="text" class="form-control mt-1 custom-lcd-size" name="simple_lcd_size[]" placeholder="Custom LCD Size" style="display: none;">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-outline-primary mt-2" onclick="addSimpleProductRow()">
+                    Add Product
+                </button>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">Update Box</button>
+                <a href="{{ url_for('boxes') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleBoxType() {
+    const detailedSections = document.getElementById('detailed-sections');
+    const simpleSection = document.getElementById('simple-section');
+    const detailedRadio = document.getElementById('detailed');
+    
+    if (detailedRadio.checked) {
+        detailedSections.style.display = 'block';
+        simpleSection.style.display = 'none';
+    } else {
+        detailedSections.style.display = 'none';
+        simpleSection.style.display = 'block';
+    }
+}
+
+function handleProductSelect(select) {
+    const row = select.closest('.product-row');
+    const customInput = row.querySelector('.custom-product');
+    const lcdSizeSelect = row.querySelector('.lcd-size-select');
+    const customLcdSize = row.querySelector('.custom-lcd-size');
+    
+    // Handle custom product input
+    if (select.value === 'Other') {
+        customInput.style.display = 'block';
+        customInput.required = true;
+        // Clear the select value so the custom input will be used
+        select.value = '';
+    } else {
+        customInput.style.display = 'none';
+        customInput.required = false;
+        customInput.value = '';
+    }
+    
+    // Handle LCD size input
+    if (select.value === 'LCDs') {
+        lcdSizeSelect.style.display = 'block';
+        lcdSizeSelect.required = false; // Optional field
+    } else {
+        lcdSizeSelect.style.display = 'none';
+        lcdSizeSelect.required = false;
+        lcdSizeSelect.selectedIndex = 0;
+        customLcdSize.style.display = 'none';
+        customLcdSize.value = '';
+    }
+}
+
+function handleLcdSizeSelect(select) {
+    const row = select.closest('.product-row');
+    const customLcdSize = row.querySelector('.custom-lcd-size');
+    
+    if (select.value === 'Custom') {
+        customLcdSize.style.display = 'block';
+        customLcdSize.required = true;
+        // Clear the select value so the custom input will be used
+        select.value = '';
+    } else {
+        customLcdSize.style.display = 'none';
+        customLcdSize.required = false;
+        customLcdSize.value = '';
+    }
+}
+
+function addProductRow(section) {
+    const container = document.getElementById(`${section}-products`);
+    const newRow = document.createElement('div');
+    newRow.className = 'product-row row';
+    newRow.innerHTML = `
+        <div class="col-md-4">
+            <select class="form-control product-select" name="${section}_product[]" onchange="handleProductSelect(this)">
+                <option value="">Select Product Type</option>
+                <option value="Laptops">Laptops</option>
+                <option value="PCs">PCs</option>
+                <option value="LCDs">LCDs</option>
+                <option value="Servers">Servers</option>
+                <option value="Switches">Switches</option>
+                <option value="Wires">Wires</option>
+                <option value="Keyboards">Keyboards</option>
+                <option value="Stands">Stands</option>
+                <option value="Other">Other (specify)</option>
+            </select>
+            <input type="text" class="form-control mt-1 custom-product" name="${section}_product[]" placeholder="Custom Product Type" style="display: none;">
+        </div>
+        <div class="col-md-3">
+            <input type="number" class="form-control" name="${section}_quantity[]" placeholder="Quantity">
+        </div>
+        <div class="col-md-3">
+            <select class="form-control lcd-size-select" name="${section}_lcd_size[]" style="display: none;" onchange="handleLcdSizeSelect(this)">
+                <option value="">Select LCD Size</option>
+                <option value="17&quot;S">17"S</option>
+                <option value="17&quot;W">17"W</option>
+                <option value="19&quot;S">19"S</option>
+                <option value="19&quot;W">19"W</option>
+                <option value="20&quot;S">20"S</option>
+                <option value="20&quot;W">20"W</option>
+                <option value="22&quot;">22"</option>
+                <option value="23&quot;">23"</option>
+                <option value="24&quot;">24"</option>
+                <option value="Borderless 24&quot;">Borderless 24"</option>
+                <option value="Custom">Custom Size</option>
+            </select>
+            <input type="text" class="form-control mt-1 custom-lcd-size" name="${section}_lcd_size[]" placeholder="Custom LCD Size" style="display: none;">
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+        </div>
+    `;
+    container.appendChild(newRow);
+}
+
+function addSimpleProductRow() {
+    const container = document.getElementById('simple-products');
+    const newRow = document.createElement('div');
+    newRow.className = 'product-row row';
+    newRow.innerHTML = `
+        <div class="col-md-4">
+            <select class="form-control product-select" name="simple_product[]" onchange="handleProductSelect(this)">
+                <option value="">Select Product Type</option>
+                <option value="Laptops">Laptops</option>
+                <option value="PCs">PCs</option>
+                <option value="LCDs">LCDs</option>
+                <option value="Servers">Servers</option>
+                <option value="Switches">Switches</option>
+                <option value="Wires">Wires</option>
+                <option value="Keyboards">Keyboards</option>
+                <option value="Stands">Stands</option>
+                <option value="Other">Other (specify)</option>
+            </select>
+            <input type="text" class="form-control mt-1 custom-product" name="simple_product[]" placeholder="Custom Product Type" style="display: none;">
+        </div>
+        <div class="col-md-3">
+            <input type="number" class="form-control" name="simple_quantity[]" placeholder="Total Quantity">
+        </div>
+        <div class="col-md-3">
+            <select class="form-control lcd-size-select" name="simple_lcd_size[]" style="display: none;" onchange="handleLcdSizeSelect(this)">
+                <option value="">Select LCD Size</option>
+                <option value="17&quot;S">17"S</option>
+                <option value="17&quot;W">17"W</option>
+                <option value="19&quot;S">19"S</option>
+                <option value="19&quot;W">19"W</option>
+                <option value="20&quot;S">20"S</option>
+                <option value="20&quot;W">20"W</option>
+                <option value="22&quot;">22"</option>
+                <option value="23&quot;">23"</option>
+                <option value="24&quot;">24"</option>
+                <option value="Borderless 24&quot;">Borderless 24"</option>
+                <option value="Custom">Custom Size</option>
+            </select>
+            <input type="text" class="form-control mt-1 custom-lcd-size" name="simple_lcd_size[]" placeholder="Custom LCD Size" style="display: none;">
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+        </div>
+    `;
+    container.appendChild(newRow);
+}
+
+function removeRow(button) {
+    const row = button.closest('.product-row');
+    const container = row.parentElement;
+    
+    // Don't remove if it's the last row
+    if (container.children.length > 1) {
+        row.remove();
+    } else {
+        // Clear the inputs instead
+        row.querySelectorAll('input, select').forEach(input => {
+            if (input.tagName === 'SELECT') {
+                input.selectedIndex = 0;
+            } else {
+                input.value = '';
+            }
+        });
+        row.querySelectorAll('.custom-product, .custom-lcd-size').forEach(input => input.style.display = 'none');
+        row.querySelectorAll('.lcd-size-select').forEach(select => select.style.display = 'none');
+    }
+}
+</script>
+{% endblock %} 

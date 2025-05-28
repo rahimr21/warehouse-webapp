@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Container - Warehouse Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .box-selection {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-bottom: 1rem;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .custom-box-section {
+        background-color: #fff3e0;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-bottom: 1rem;
+    }
+    .product-row {
+        margin-bottom: 0.5rem;
+    }
+    .search-box {
+        margin-bottom: 1rem;
+    }
+    .box-item {
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        background-color: white;
+    }
+    .box-item.selected {
+        background-color: #e3f2fd;
+        border-color: #2196f3;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <h1 class="mb-4">Edit Container</h1>
+        
+        <form method="POST" action="{{ url_for('edit_container', container_id=container.id) }}">
+            <div class="mb-3">
+                <label for="name" class="form-label">Container Name *</label>
+                <input type="text" class="form-control" id="name" name="name" value="{{ container.name }}" required>
+            </div>
+
+            <div class="box-selection">
+                <h5 class="mb-3">Select Boxes to Include</h5>
+                
+                <!-- Search Box -->
+                <div class="search-box">
+                    <input type="text" id="boxSearchBox" class="form-control" placeholder="Search boxes by box number...">
+                </div>
+                
+                <div id="boxList">
+                    {% for box in boxes %}
+                    <div class="box-item" data-box-number="{{ box.box_number.lower() }}">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="box_ids[]" value="{{ box.id }}" 
+                                   id="box_{{ box.id }}" {{ 'checked' if box.container_id == container.id else '' }}>
+                            <label class="form-check-label" for="box_{{ box.id }}">
+                                <strong>Box {{ box.box_number }}</strong> - {{ "%.2f"|format(box.weight) }} lbs
+                                <span class="badge bg-{{ 'primary' if box.box_type == 'detailed' else 'secondary' }} ms-2">
+                                    {{ box.box_type|title }}
+                                </span>
+                                <br>
+                                <small class="text-muted">
+                                    {% set totals = box.calculate_totals() %}
+                                    {% for product_type, quantity in totals.items() %}
+                                        {{ product_type }}: {{ quantity }}{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </small>
+                            </label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="custom-box-section">
+                <h5 class="mb-3">Custom Boxes</h5>
+                <p class="text-muted">Add boxes that don't have specific box numbers</p>
+                
+                <div id="custom-boxes">
+                    {% if container.custom_boxes %}
+                        {% for custom_box in container.custom_boxes %}
+                        <div class="product-row row">
+                            <div class="col-md-4">
+                                <select class="form-control" name="custom_product[]">
+                                    <option value="">Select Product Type</option>
+                                    <option value="Laptops" {{ 'selected' if custom_box.product_type == 'Laptops' else '' }}>Laptops</option>
+                                    <option value="PCs" {{ 'selected' if custom_box.product_type == 'PCs' else '' }}>PCs</option>
+                                    <option value="LCDs" {{ 'selected' if custom_box.product_type == 'LCDs' else '' }}>LCDs</option>
+                                    <option value="Servers" {{ 'selected' if custom_box.product_type == 'Servers' else '' }}>Servers</option>
+                                    <option value="Switches" {{ 'selected' if custom_box.product_type == 'Switches' else '' }}>Switches</option>
+                                    <option value="Wires" {{ 'selected' if custom_box.product_type == 'Wires' else '' }}>Wires</option>
+                                    <option value="Keyboards" {{ 'selected' if custom_box.product_type == 'Keyboards' else '' }}>Keyboards</option>
+                                    <option value="Stands" {{ 'selected' if custom_box.product_type == 'Stands' else '' }}>Stands</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control" name="custom_quantity[]" placeholder="Quantity" value="{{ custom_box.quantity }}">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" step="0.01" class="form-control" name="custom_weight[]" placeholder="Weight (lbs)" value="{{ custom_box.weight }}">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-outline-danger" onclick="removeCustomBox(this)">×</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="product-row row">
+                            <div class="col-md-4">
+                                <select class="form-control" name="custom_product[]">
+                                    <option value="">Select Product Type</option>
+                                    <option value="Laptops">Laptops</option>
+                                    <option value="PCs">PCs</option>
+                                    <option value="LCDs">LCDs</option>
+                                    <option value="Servers">Servers</option>
+                                    <option value="Switches">Switches</option>
+                                    <option value="Wires">Wires</option>
+                                    <option value="Keyboards">Keyboards</option>
+                                    <option value="Stands">Stands</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" class="form-control" name="custom_quantity[]" placeholder="Quantity">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" step="0.01" class="form-control" name="custom_weight[]" placeholder="Weight (lbs)">
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-outline-danger" onclick="removeCustomBox(this)">×</button>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <button type="button" class="btn btn-outline-primary mt-2" onclick="addCustomBox()">
+                    Add Custom Box
+                </button>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">Update Container</button>
+                <a href="{{ url_for('containers') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Search functionality for boxes
+document.getElementById('boxSearchBox').addEventListener('keyup', function() {
+    const searchText = this.value.toLowerCase();
+    const boxItems = document.querySelectorAll('.box-item');
+    
+    boxItems.forEach(function(item) {
+        const boxNumber = item.getAttribute('data-box-number');
+        const label = item.querySelector('label').textContent.toLowerCase();
+        
+        if (boxNumber.includes(searchText) || label.includes(searchText)) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+});
+
+// Add visual feedback for selected boxes
+document.querySelectorAll('input[name="box_ids[]"]').forEach(function(checkbox) {
+    checkbox.addEventListener('change', function() {
+        const boxItem = this.closest('.box-item');
+        if (this.checked) {
+            boxItem.classList.add('selected');
+        } else {
+            boxItem.classList.remove('selected');
+        }
+    });
+    
+    // Set initial state
+    if (checkbox.checked) {
+        checkbox.closest('.box-item').classList.add('selected');
+    }
+});
+
+function addCustomBox() {
+    const container = document.getElementById('custom-boxes');
+    const newRow = document.createElement('div');
+    newRow.className = 'product-row row';
+    newRow.innerHTML = `
+        <div class="col-md-4">
+            <select class="form-control" name="custom_product[]">
+                <option value="">Select Product Type</option>
+                <option value="Laptops">Laptops</option>
+                <option value="PCs">PCs</option>
+                <option value="LCDs">LCDs</option>
+                <option value="Servers">Servers</option>
+                <option value="Switches">Switches</option>
+                <option value="Wires">Wires</option>
+                <option value="Keyboards">Keyboards</option>
+                <option value="Stands">Stands</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <input type="number" class="form-control" name="custom_quantity[]" placeholder="Quantity">
+        </div>
+        <div class="col-md-3">
+            <input type="number" step="0.01" class="form-control" name="custom_weight[]" placeholder="Weight (lbs)">
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-danger" onclick="removeCustomBox(this)">×</button>
+        </div>
+    `;
+    container.appendChild(newRow);
+}
+
+function removeCustomBox(button) {
+    const row = button.closest('.product-row');
+    const container = row.parentElement;
+    
+    if (container.children.length > 1) {
+        row.remove();
+    } else {
+        // Clear the inputs instead of removing the last row
+        row.querySelectorAll('input, select').forEach(input => {
+            if (input.tagName === 'SELECT') {
+                input.selectedIndex = 0;
+            } else {
+                input.value = '';
+            }
+        });
+    }
+}
+</script>
+{% endblock %} 

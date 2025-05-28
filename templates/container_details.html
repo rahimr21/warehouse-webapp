@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Container Details - Warehouse Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .box-section {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-bottom: 1rem;
+    }
+    .box-header {
+        border-bottom: 1px solid #dee2e6;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .product-totals {
+        font-size: 0.9rem;
+        color: #666;
+    }
+    .total-section {
+        background-color: #e9ecef;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-top: 2rem;
+    }
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+        .container {
+            width: 100%;
+            max-width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Container Details</h1>
+            <div class="no-print">
+                <a href="{{ url_for('export_container', container_id=container.id) }}" class="btn btn-success">Export CSV</a>
+                <button onclick="window.print()" class="btn btn-primary">Print Report</button>
+                <a href="{{ url_for('containers') }}" class="btn btn-outline-secondary">Back to Containers</a>
+            </div>
+        </div>
+
+        <div class="box-section">
+            <div class="box-header">
+                <h3>{{ container.name }}</h3>
+                <p class="text-muted">Created on {{ container.date.strftime('%Y-%m-%d') }}</p>
+            </div>
+
+            <div class="total-section mb-4">
+                <h4>Container Summary</h4>
+                {% set totals = container.calculate_totals() %}
+                {% if totals %}
+                    <div class="row">
+                        {% for product_type, quantity in totals.items() %}
+                            <div class="col-md-3 mb-2">
+                                <div class="card text-center">
+                                    <div class="card-body">
+                                        <h5 class="card-title">{{ quantity }}</h5>
+                                        <p class="card-text">{{ product_type }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- LCD Sizes Summary -->
+                    {% set lcd_sizes = container.calculate_lcd_sizes() %}
+                    {% if lcd_sizes %}
+                        <div class="mt-3">
+                            <h5>LCD Size Breakdown</h5>
+                            <div class="row">
+                                {% for size, quantity in lcd_sizes.items() %}
+                                    <div class="col-md-2 mb-2">
+                                        <div class="card text-center bg-info text-white">
+                                            <div class="card-body p-2">
+                                                <h6 class="card-title mb-1">{{ quantity }}</h6>
+                                                <small class="card-text">{{ size }}</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted">No items in this container</p>
+                {% endif %}
+            </div>
+
+            {% if container.boxes %}
+                <h4 class="mb-3">Numbered Boxes</h4>
+                {% for box in container.boxes %}
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Box {{ box.box_number }}</h5>
+                            <p class="card-text">Weight: {{ "%.2f"|format(box.weight) }} lbs</p>
+                            
+                            <div class="row">
+                                {% if box.box_type == 'detailed' %}
+                                    {% for section in ['bottom', 'middle', 'top'] %}
+                                        <div class="col-md-4">
+                                            <h6>{{ section|title }} Section</h6>
+                                            {% set section_contents = box.contents|selectattr('section', 'equalto', section)|list %}
+                                            {% if section_contents %}
+                                                {% for content in section_contents %}
+                                                    <div class="product-totals">
+                                                        {{ content.product_type }}{% if content.lcd_size %} ({{ content.lcd_size }}){% endif %}: {{ content.quantity }}
+                                                    </div>
+                                                {% endfor %}
+                                            {% else %}
+                                                <div class="text-muted">No items</div>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="col-md-12">
+                                        <h6>Contents</h6>
+                                        {% set simple_contents = box.contents|selectattr('section', 'equalto', 'total')|list %}
+                                        {% if simple_contents %}
+                                            {% for content in simple_contents %}
+                                                <div class="product-totals">
+                                                    {{ content.product_type }}{% if content.lcd_size %} ({{ content.lcd_size }}){% endif %}: {{ content.quantity }}
+                                                </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="text-muted">No items</div>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            
+                            {% set box_lcd_sizes = box.calculate_lcd_sizes() %}
+                            {% if box_lcd_sizes %}
+                                <div class="mt-2">
+                                    <small class="text-info">
+                                        <strong>LCD Sizes in this box:</strong>
+                                        {% for size, quantity in box_lcd_sizes.items() %}
+                                            {{ size }}: {{ quantity }}{% if not loop.last %}, {% endif %}
+                                        {% endfor %}
+                                    </small>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            {% if container.custom_boxes %}
+                <h4 class="mb-3">Custom Boxes</h4>
+                {% for custom_box in container.custom_boxes %}
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">Custom Box</h5>
+                            <p class="card-text">
+                                Weight: {{ "%.2f"|format(custom_box.weight) }} lbs<br>
+                                {{ custom_box.product_type }}: {{ custom_box.quantity }}
+                            </p>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+
+        </div>
+    </div>
+</div>
+{% endblock %} 

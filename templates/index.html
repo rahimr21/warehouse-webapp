@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Warehouse Management{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 text-center">
+        <h1 class="mb-4">Amin Group WH Management System</h1>
+        <p class="lead mb-5">Manage Boxes/Gaylords and Containers</p>
+        
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Box Management</h5>
+                        <p class="card-text">Create and manage boxes with detailed product contents</p>
+                        <a href="{{ url_for('boxes') }}" class="btn btn-primary">View Boxes</a>
+                        <a href="{{ url_for('new_box') }}" class="btn btn-outline-primary">New Box</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Container Management</h5>
+                        <p class="card-text">Create containers and generate shipping reports</p>
+                        <a href="{{ url_for('containers') }}" class="btn btn-primary">View Containers</a>
+                        <a href="{{ url_for('new_container') }}" class="btn btn-outline-primary">New Container</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

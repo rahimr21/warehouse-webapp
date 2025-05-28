@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}New Container - Warehouse Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .box-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        padding: 1rem;
+    }
+    .custom-box-section {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        margin-top: 2rem;
+    }
+    .product-row {
+        margin-bottom: 0.5rem;
+    }
+    .remove-row {
+        color: #dc3545;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h1 class="mb-4">Create New Container</h1>
+        
+        <form method="POST" action="{{ url_for('new_container') }}">
+            <div class="mb-3">
+                <label for="name" class="form-label">Container Name *</label>
+                <input type="text" class="form-control" id="name" name="name" required>
+            </div>
+
+            <div class="mb-4">
+                <h5>Select Boxes</h5>
+                {% if boxes %}
+                    <!-- Search Box -->
+                    <div class="mb-3">
+                        <input type="text" id="boxSearchBox" class="form-control" placeholder="Search boxes by box number...">
+                    </div>
+                    
+                    <div class="box-list" id="boxList">
+                        {% for box in boxes %}
+                        <div class="form-check mb-2 box-item" data-box-number="{{ box.box_number.lower() }}">
+                            <input class="form-check-input" type="checkbox" name="box_ids[]" value="{{ box.id }}" id="box_{{ box.id }}">
+                            <label class="form-check-label" for="box_{{ box.id }}">
+                                <strong>Box {{ box.box_number }}</strong> - {{ "%.2f"|format(box.weight) }} lbs
+                                <span class="badge bg-{{ 'primary' if box.box_type == 'detailed' else 'secondary' }} ms-2">
+                                    {{ box.box_type|title }}
+                                </span>
+                                <br>
+                                <small class="text-muted">
+                                    {% set totals = box.calculate_totals() %}
+                                    {% for product_type, quantity in totals.items() %}
+                                        {{ product_type }}: {{ quantity }}{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </small>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No available boxes found.</p>
+                {% endif %}
+            </div>
+
+            <div class="custom-box-section">
+                <h5>Add Custom Boxes</h5>
+                <p class="text-muted">Add boxes that don't have box numbers</p>
+                
+                <div id="custom-boxes">
+                    <div class="product-row row">
+                        <div class="col-md-4">
+                            <input type="text" class="form-control" name="custom_product[]" placeholder="Product Type">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control" name="custom_quantity[]" placeholder="Quantity">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" step="0.01" class="form-control" name="custom_weight[]" placeholder="Weight (lbs)">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="button" class="btn btn-outline-primary mt-2" onclick="addCustomBox()">
+                    Add Custom Box
+                </button>
+            </div>
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">Create Container</button>
+                <a href="{{ url_for('containers') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Search functionality for boxes
+document.getElementById('boxSearchBox').addEventListener('keyup', function() {
+    const searchText = this.value.toLowerCase();
+    const boxItems = document.querySelectorAll('.box-item');
+    
+    boxItems.forEach(function(item) {
+        const boxNumber = item.getAttribute('data-box-number');
+        const label = item.querySelector('label').textContent.toLowerCase();
+        
+        if (boxNumber.includes(searchText) || label.includes(searchText)) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+});
+
+function addCustomBox() {
+    const container = document.getElementById('custom-boxes');
+    const newRow = document.createElement('div');
+    newRow.className = 'product-row row';
+    newRow.innerHTML = `
+        <div class="col-md-4">
+            <input type="text" class="form-control" name="custom_product[]" placeholder="Product Type">
+        </div>
+        <div class="col-md-3">
+            <input type="number" class="form-control" name="custom_quantity[]" placeholder="Quantity">
+        </div>
+        <div class="col-md-3">
+            <input type="number" step="0.01" class="form-control" name="custom_weight[]" placeholder="Weight (lbs)">
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-outline-danger remove-row" onclick="removeRow(this)">×</button>
+        </div>
+    `;
+    container.appendChild(newRow);
+}
+
+function removeRow(button) {
+    const row = button.closest('.product-row');
+    const container = row.parentElement;
+    
+    // Don't remove if it's the last row
+    if (container.children.length > 1) {
+        row.remove();
+    } else {
+        // Clear the inputs instead
+        row.querySelectorAll('input').forEach(input => input.value = '');
+    }
+}
+</script>
+{% endblock %} 
