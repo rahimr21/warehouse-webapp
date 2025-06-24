@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from sqlalchemy.orm import relationship
 from sqlalchemy import event
 import csv
@@ -13,6 +14,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warehouse.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 # Models
 class Box(db.Model):
@@ -53,6 +55,7 @@ class BoxContent(db.Model):
 
 class Container(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    container_number = db.Column(db.String(50), unique=True, nullable=True)
     name = db.Column(db.String(100), nullable=False)
     date = db.Column(db.DateTime, default=datetime.utcnow)
     boxes = relationship('Box', backref='container', lazy=True)
@@ -85,6 +88,19 @@ class Container(db.Model):
                 lcd_sizes[size] += quantity
         # Custom boxes don't currently support LCD sizes, but could be added later
         return lcd_sizes
+    
+    def calculate_total_weight(self):
+        total_weight = 0
+        # Weight from regular boxes
+        for box in self.boxes:
+            total_weight += box.weight
+        # Weight from custom boxes
+        for custom_box in self.custom_boxes:
+            total_weight += custom_box.weight
+        return total_weight
+    
+    def get_total_box_count(self):
+        return len(self.boxes) + len(self.custom_boxes)
 
 class CustomBox(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -99,6 +115,47 @@ def init_db_command():
     db.create_all()
     print('Initialized the database.')
 
+@app.cli.command('assign-container-numbers')
+def assign_container_numbers_command():
+    """Assign container numbers to existing containers that don't have them. (Optional - for tracking purposes only)"""
+    containers_without_numbers = Container.query.filter_by(container_number=None).all()
+    
+    if not containers_without_numbers:
+        print('All containers already have container numbers.')
+        return
+    
+    print(f'Found {len(containers_without_numbers)} containers without container numbers:')
+    for container in containers_without_numbers:
+        print(f'  - "{container.name}"')
+    
+    print('\nNote: Container numbers are optional and only needed for tracking shipping containers.')
+    confirm = input('Do you want to assign sequential numbers to these containers? (y/n): ').lower().strip()
+    
+    if confirm != 'y':
+        print('Operation cancelled.')
+        return
+    
+    # Find the highest existing container number
+    max_number = 0
+    containers_with_numbers = Container.query.filter(Container.container_number != None).all()
+    for container in containers_with_numbers:
+        try:
+            number = int(container.container_number)
+            if number > max_number:
+                max_number = number
+        except ValueError:
+            continue
+    
+    # Assign numbers to containers without them
+    next_number = max_number + 1
+    for container in containers_without_numbers:
+        container.container_number = str(next_number)
+        print(f'Assigned container number {next_number} to container "{container.name}"')
+        next_number += 1
+    
+    db.session.commit()
+    print(f'Assigned container numbers to {len(containers_without_numbers)} containers.')
+
 # Routes
 @app.route('/')
 def index():
@@ -106,7 +163,30 @@ def index():
 
 @app.route('/boxes')
 def boxes():
-    boxes = Box.query.all()
+    # Get all boxes and sort them by box number in descending order (highest first)
+    # Since box_number is a string, we need to sort numerically
+    all_boxes = Box.query.all()
+    
+    # Separate numeric and non-numeric box numbers for proper sorting
+    numeric_boxes = []
+    non_numeric_boxes = []
+    
+    for box in all_boxes:
+        try:
+            int(box.box_number)
+            numeric_boxes.append(box)
+        except ValueError:
+            non_numeric_boxes.append(box)
+    
+    # Sort numeric boxes by numeric value (descending)
+    numeric_boxes.sort(key=lambda x: int(x.box_number), reverse=True)
+    
+    # Sort non-numeric boxes alphabetically (descending)
+    non_numeric_boxes.sort(key=lambda x: x.box_number, reverse=True)
+    
+    # Combine with numeric first, then non-numeric
+    boxes = numeric_boxes + non_numeric_boxes
+    
     return render_template('boxes.html', boxes=boxes)
 
 @app.route('/boxes/new', methods=['GET', 'POST'])
@@ -204,8 +284,25 @@ def new_box():
         flash('Box created successfully!', 'success')
         return redirect(url_for('boxes'))
     
+    # Get the highest box number and calculate next number for pre-filling
+    try:
+        # Try to find the highest numeric box number
+        numeric_boxes = db.session.query(Box.box_number).all()
+        max_number = 0
+        for box in numeric_boxes:
+            try:
+                number = int(box.box_number)
+                if number > max_number:
+                    max_number = number
+            except ValueError:
+                # Skip non-numeric box numbers
+                continue
+        next_box_number = str(max_number + 1)
+    except:
+        next_box_number = "1"
+    
     containers = Container.query.all()
-    return render_template('new_box.html', containers=containers)
+    return render_template('new_box.html', containers=containers, next_box_number=next_box_number)
 
 @app.route('/boxes/<int:box_id>/edit', methods=['GET', 'POST'])
 def edit_box(box_id):
@@ -322,8 +419,20 @@ def containers():
 @app.route('/containers/new', methods=['GET', 'POST'])
 def new_container():
     if request.method == 'POST':
+        container_number = request.form.get('container_number')
         name = request.form.get('name')
-        container = Container(name=name)
+        
+        # Only check if container number already exists if one was provided
+        if container_number and Container.query.filter_by(container_number=container_number).first():
+            flash('Container number already exists!', 'error')
+            boxes = Box.query.filter_by(container_id=None).all()
+            return render_template('new_container.html', boxes=boxes)
+        
+        # Create container with or without container number
+        container = Container(
+            container_number=container_number if container_number else None, 
+            name=name
+        )
         db.session.add(container)
         
         # Process selected boxes
@@ -365,7 +474,20 @@ def edit_container(container_id):
     container = Container.query.get_or_404(container_id)
     
     if request.method == 'POST':
+        container_number = request.form.get('container_number')
         name = request.form.get('name')
+        
+        # Only check if container number already exists if one was provided
+        if container_number:
+            existing_container = Container.query.filter_by(container_number=container_number).first()
+            if existing_container and existing_container.id != container.id:
+                flash('Container number already exists!', 'error')
+                available_boxes = Box.query.filter(
+                    (Box.container_id == None) | (Box.container_id == container.id)
+                ).all()
+                return render_template('edit_container.html', container=container, boxes=available_boxes)
+        
+        container.container_number = container_number if container_number else None
         container.name = name
         
         # Clear existing box assignments
@@ -447,6 +569,41 @@ def export_container(container_id):
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename=container_report_{container.name}_{container.date.strftime("%Y%m%d")}.csv'}
     )
+
+@app.route('/warehouse')
+def warehouse():
+    # Get all boxes that are not assigned to any container (Available boxes)
+    available_boxes = Box.query.filter_by(container_id=None).all()
+    
+    # Calculate totals for available boxes
+    totals = {}
+    lcd_sizes = {}
+    total_weight = 0
+    
+    for box in available_boxes:
+        # Add to total weight
+        total_weight += box.weight
+        
+        # Calculate product totals
+        box_totals = box.calculate_totals()
+        for product_type, quantity in box_totals.items():
+            if product_type not in totals:
+                totals[product_type] = 0
+            totals[product_type] += quantity
+        
+        # Calculate LCD sizes
+        box_lcd_sizes = box.calculate_lcd_sizes()
+        for size, quantity in box_lcd_sizes.items():
+            if size not in lcd_sizes:
+                lcd_sizes[size] = 0
+            lcd_sizes[size] += quantity
+    
+    return render_template('warehouse.html', 
+                         available_boxes=available_boxes,
+                         totals=totals, 
+                         lcd_sizes=lcd_sizes,
+                         total_weight=total_weight,
+                         total_box_count=len(available_boxes))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True) 

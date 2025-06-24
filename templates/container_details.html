@@ -52,11 +52,34 @@
         <div class="box-section">
             <div class="box-header">
                 <h3>{{ container.name }}</h3>
-                <p class="text-muted">Created on {{ container.date.strftime('%Y-%m-%d') }}</p>
+                {% if container.container_number %}
+                    <p class="text-muted">Container Number: <span class="badge bg-info">{{ container.container_number }}</span> | Created on {{ container.date.strftime('%Y-%m-%d') }}</p>
+                {% else %}
+                    <p class="text-muted">Created on {{ container.date.strftime('%Y-%m-%d') }}</p>
+                {% endif %}
             </div>
 
             <div class="total-section mb-4">
                 <h4>Container Summary</h4>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="card text-center bg-primary text-white">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ "%.2f"|format(container.calculate_total_weight()) }} lbs</h5>
+                                <p class="card-text">Total Weight</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card text-center bg-success text-white">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ container.get_total_box_count() }}</h5>
+                                <p class="card-text">Total Boxes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 {% set totals = container.calculate_totals() %}
                 {% if totals %}
                     <div class="row">

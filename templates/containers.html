@@ -29,6 +29,7 @@
         <thead>
             <tr>
                 <th>Name</th>
+                <th>Container Number</th>
                 <th>Date</th>
                 <th>Contents</th>
                 <th>Actions</th>
@@ -37,7 +38,14 @@
         <tbody>
             {% for container in containers %}
             <tr class="container-row">
-                <td>{{ container.name }}</td>
+                <td><strong>{{ container.name }}</strong></td>
+                <td>
+                    {% if container.container_number %}
+                        <span class="badge bg-info">{{ container.container_number }}</span>
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
                 <td>{{ container.date.strftime('%Y-%m-%d') }}</td>
                 <td>
                     {% set totals = container.calculate_totals() %}
