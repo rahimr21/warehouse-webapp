@@ -6,8 +6,12 @@ from sqlalchemy.orm import relationship
 from sqlalchemy import event
 import csv
 from io import StringIO
+from dotenv import load_dotenv
 
 from gemini_client import GeminiUnavailable, interpret_box_speech
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
