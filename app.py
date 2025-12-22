@@ -2,7 +2,6 @@ import os
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 from sqlalchemy.orm import relationship
 from sqlalchemy import event
 import csv
@@ -14,7 +13,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warehouse.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
+
+# Initialize database tables automatically on app startup
+with app.app_context():
+    db.create_all()
 
 # Models
 class Box(db.Model):

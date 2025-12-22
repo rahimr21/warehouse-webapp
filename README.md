@@ -33,12 +33,8 @@ pip install -r requirements.txt
 
 Note: If you encounter SQLAlchemy compatibility issues with Python 3.13, the requirements.txt has been updated with compatible versions.
 
-4. Initialize the database:
-```bash
-flask init-db
-```
-
-5. Run the application:
+4. Run the application:
+Note: The database is automatically initialized when the app starts. If you need to manually initialize it, you can run `flask init-db`.
 ```bash
 flask run --host=0.0.0.0
 ```
