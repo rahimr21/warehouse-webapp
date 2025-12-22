@@ -7,6 +7,8 @@ from sqlalchemy import event
 import csv
 from io import StringIO
 
+from gemini_client import GeminiUnavailable, interpret_box_speech
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warehouse.db'
@@ -190,6 +192,164 @@ def boxes():
     boxes = numeric_boxes + non_numeric_boxes
     
     return render_template('boxes.html', boxes=boxes)
+
+
+@app.route('/api/voice/interpret-box', methods=['POST'])
+def api_voice_interpret_box():
+    """Interpret spoken box description using Gemini and return merged box state."""
+    # Kill switch: if no API key, fail fast without breaking the app
+    if not os.getenv('GEMINI_API_KEY'):
+        return jsonify({'error': 'Voice parsing unavailable'}), 503
+
+    data = request.get_json() or {}
+    transcript = data.get('transcript', '') or ''
+    current_box = data.get('current_box') or {}
+
+    if not transcript.strip():
+        return jsonify({'error': 'Transcript is empty'}), 400
+
+    # Ensure current_box has the expected structure
+    normalized_current = {
+        'box_number': current_box.get('box_number'),
+        'weight': current_box.get('weight'),
+        'contents': current_box.get('contents') or [],
+    }
+
+    try:
+        llm_result = interpret_box_speech(transcript, normalized_current)
+    except GeminiUnavailable as exc:
+        return jsonify({'error': str(exc)}), 503
+    except ValueError as exc:
+        return jsonify({'error': f'LLM parsing error: {exc}'}), 400
+
+    # If LLM chose to return an explicit error, pass it through
+    if isinstance(llm_result, dict) and llm_result.get('error'):
+        return jsonify({'error': llm_result.get('error')}), 400
+
+    # Validate and normalize the successful structure
+    box_number = llm_result.get('box_number', normalized_current['box_number'])
+    weight = llm_result.get('weight', normalized_current['weight'])
+    contents = llm_result.get('contents', normalized_current['contents'])
+    notes = llm_result.get('notes', [])
+
+    # Normalize contents list
+    normalized_contents = []
+    for item in contents or []:
+        product_type = item.get('product_type')
+        quantity = item.get('quantity')
+        lcd_size = item.get('lcd_size')
+
+        if not product_type or quantity is None:
+            continue
+
+        try:
+            quantity_int = int(quantity)
+        except (TypeError, ValueError):
+            continue
+        if quantity_int <= 0:
+            continue
+
+        # Only allow known product types
+        if product_type not in ['Laptops', 'PCs', 'LCDs', 'Servers',
+                                'Switches', 'Wires', 'Keyboards', 'Stands']:
+            continue
+
+        normalized_contents.append(
+            {
+                'product_type': product_type,
+                'quantity': quantity_int,
+                'lcd_size': lcd_size if product_type == 'LCDs' else None,
+            }
+        )
+
+    if not normalized_contents and not box_number and weight is None:
+        return jsonify({'error': 'Could not parse any usable data from speech'}), 400
+
+    return jsonify(
+        {
+            'box_number': box_number,
+            'weight': weight,
+            'contents': normalized_contents,
+            'notes': notes,
+        }
+    )
+
+@app.route('/api/boxes', methods=['POST'])
+def api_create_box():
+    """API endpoint for creating boxes via JSON (used by voice entry)"""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'No JSON data provided'}), 400
+    
+    box_number = data.get('box_number')
+    weight = data.get('weight')
+    contents = data.get('contents', [])
+    
+    if not box_number:
+        return jsonify({'error': 'Box number is required'}), 400
+    if weight is None:
+        return jsonify({'error': 'Weight is required'}), 400
+    
+    # Check if box number already exists
+    if Box.query.filter_by(box_number=str(box_number)).first():
+        return jsonify({'error': f'Box number {box_number} already exists'}), 400
+    
+    try:
+        box = Box(
+            box_number=str(box_number),
+            weight=float(weight),
+            box_type='simple'
+        )
+        db.session.add(box)
+        
+        # Process contents
+        for item in contents:
+            product_type = item.get('product_type')
+            quantity = item.get('quantity')
+            lcd_size = item.get('lcd_size')
+            
+            if product_type and quantity:
+                content = BoxContent(
+                    box=box,
+                    section='total',
+                    product_type=product_type,
+                    quantity=int(quantity),
+                    lcd_size=lcd_size
+                )
+                db.session.add(content)
+        
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f'Box {box_number} created successfully',
+            'box_id': box.id
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/boxes/voice')
+def voice_entry():
+    """Voice-powered box entry page"""
+    # Get the next box number suggestion
+    try:
+        numeric_boxes = db.session.query(Box.box_number).all()
+        max_number = 0
+        for box in numeric_boxes:
+            try:
+                number = int(box.box_number)
+                if number > max_number:
+                    max_number = number
+            except ValueError:
+                continue
+        next_box_number = str(max_number + 1)
+    except:
+        next_box_number = "1"
+    
+    return render_template('voice_entry.html', next_box_number=next_box_number)
+
 
 @app.route('/boxes/new', methods=['GET', 'POST'])
 def new_box():
