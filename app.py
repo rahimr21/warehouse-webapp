@@ -171,9 +171,15 @@ def index():
 
 @app.route('/boxes')
 def boxes():
-    # Get all boxes and sort them by box number in descending order (highest first)
-    # Since box_number is a string, we need to sort numerically
-    all_boxes = Box.query.all()
+    # Get query parameter for showing boxes in containers (default: False)
+    show_in_containers = request.args.get('show_in_containers', 'false')
+    
+    # Filter boxes based on toggle state
+    if show_in_containers == 'true':
+        all_boxes = Box.query.all()
+    else:
+        # Default: only show available boxes (not in containers)
+        all_boxes = Box.query.filter_by(container_id=None).all()
     
     # Separate numeric and non-numeric box numbers for proper sorting
     numeric_boxes = []
@@ -195,7 +201,7 @@ def boxes():
     # Combine with numeric first, then non-numeric
     boxes = numeric_boxes + non_numeric_boxes
     
-    return render_template('boxes.html', boxes=boxes)
+    return render_template('boxes.html', boxes=boxes, show_in_containers=show_in_containers)
 
 
 @app.route('/api/voice/interpret-box', methods=['POST'])

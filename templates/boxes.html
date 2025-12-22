@@ -23,7 +23,14 @@
     </div>
 </div>
 
-<div class="mb-3">
+<div class="mb-3 d-flex align-items-center gap-3">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="showInContainersToggle" 
+               {% if show_in_containers == 'true' %}checked{% endif %}>
+        <label class="form-check-label" for="showInContainersToggle">
+            Show boxes in containers
+        </label>
+    </div>
     <input type="text" id="searchBox" class="form-control search-box" placeholder="Search boxes...">
 </div>
 
@@ -90,6 +97,7 @@
 
 {% block extra_js %}
 <script>
+// Search functionality
 document.getElementById('searchBox').addEventListener('keyup', function() {
     const searchText = this.value.toLowerCase();
     const rows = document.getElementsByClassName('box-row');
@@ -98,6 +106,14 @@ document.getElementById('searchBox').addEventListener('keyup', function() {
         const text = row.textContent.toLowerCase();
         row.style.display = text.includes(searchText) ? '' : 'none';
     }
+});
+
+// Toggle for showing boxes in containers
+document.getElementById('showInContainersToggle').addEventListener('change', function() {
+    const showInContainers = this.checked ? 'true' : 'false';
+    const url = new URL(window.location.href);
+    url.searchParams.set('show_in_containers', showInContainers);
+    window.location.href = url.toString();
 });
 </script>
 {% endblock %} 
