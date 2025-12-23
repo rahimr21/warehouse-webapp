@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -14,6 +15,17 @@ from gemini_client import GeminiUnavailable, interpret_box_speech
 load_dotenv()
 
 app = Flask(__name__)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warehouse.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -364,35 +376,88 @@ def voice_entry():
 @app.route('/boxes/new', methods=['GET', 'POST'])
 def new_box():
     if request.method == 'POST':
-        box_number = request.form.get('box_number')
-        weight = float(request.form.get('weight'))
-        box_type = request.form.get('box_type', 'detailed')
-        container_id = request.form.get('container_id')
-        
-        # Check if box number already exists
-        if Box.query.filter_by(box_number=box_number).first():
-            flash('Box number already exists!', 'error')
-            return redirect(url_for('new_box'))
-        
-        box = Box(
-            box_number=box_number, 
-            weight=weight, 
-            box_type=box_type,
-            container_id=int(container_id) if container_id else None
-        )
-        db.session.add(box)
-        
-        # Process contents based on box type
-        if box_type == 'detailed':
-            # Process contents for each section
-            sections = ['bottom', 'middle', 'top']
-            for section in sections:
-                products = request.form.getlist(f'{section}_product[]')
-                quantities = request.form.getlist(f'{section}_quantity[]')
-                lcd_sizes = request.form.getlist(f'{section}_lcd_size[]')
+        try:
+            box_number = request.form.get('box_number')
+            weight_str = request.form.get('weight')
+            box_type = request.form.get('box_type', 'detailed')
+            container_id = request.form.get('container_id')
+            
+            # Validate required fields
+            if not box_number:
+                flash('Box number is required!', 'error')
+                return redirect(url_for('new_box'))
+            
+            if not weight_str:
+                flash('Weight is required!', 'error')
+                return redirect(url_for('new_box'))
+            
+            try:
+                weight = float(weight_str)
+            except ValueError:
+                flash('Weight must be a valid number!', 'error')
+                logger.warning(f"Invalid weight value: {weight_str}")
+                return redirect(url_for('new_box'))
+            
+            # Check if box number already exists
+            if Box.query.filter_by(box_number=box_number).first():
+                flash('Box number already exists!', 'error')
+                return redirect(url_for('new_box'))
+            
+            box = Box(
+                box_number=box_number, 
+                weight=weight, 
+                box_type=box_type,
+                container_id=int(container_id) if container_id else None
+            )
+            db.session.add(box)
+            
+            # Process contents based on box type
+            if box_type == 'detailed':
+                # Process contents for each section
+                sections = ['bottom', 'middle', 'top']
+                for section in sections:
+                    products = request.form.getlist(f'{section}_product[]')
+                    quantities = request.form.getlist(f'{section}_quantity[]')
+                    lcd_sizes = request.form.getlist(f'{section}_lcd_size[]')
+                    
+                    # Process products in pairs (select value, custom input value)
+                    # Since both select and custom input have same name, they appear consecutively
+                    i = 0
+                    while i < len(products) and i // 2 < len(quantities):
+                        quantity_index = i // 2
+                        quantity = quantities[quantity_index] if quantity_index < len(quantities) else None
+                        
+                        # Get product name - either from select (even index) or custom input (odd index)
+                        product = products[i] if products[i] else (products[i + 1] if i + 1 < len(products) else None)
+                        
+                        if product and quantity:
+                            try:
+                                # Get LCD size - also comes in pairs
+                                lcd_size = None
+                                if product == 'LCDs' and quantity_index * 2 < len(lcd_sizes):
+                                    lcd_size = lcd_sizes[quantity_index * 2] if lcd_sizes[quantity_index * 2] else (
+                                        lcd_sizes[quantity_index * 2 + 1] if quantity_index * 2 + 1 < len(lcd_sizes) else None
+                                    )
+                                
+                                content = BoxContent(
+                                    box=box,
+                                    section=section,
+                                    product_type=product,
+                                    quantity=int(quantity),
+                                    lcd_size=lcd_size
+                                )
+                                db.session.add(content)
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Error processing content item: {e}, product={product}, quantity={quantity}")
+                                continue
+                        
+                        i += 2  # Skip to next pair
+            else:  # simple box type
+                products = request.form.getlist('simple_product[]')
+                quantities = request.form.getlist('simple_quantity[]')
+                lcd_sizes = request.form.getlist('simple_lcd_size[]')
                 
                 # Process products in pairs (select value, custom input value)
-                # Since both select and custom input have same name, they appear consecutively
                 i = 0
                 while i < len(products) and i // 2 < len(quantities):
                     quantity_index = i // 2
@@ -402,59 +467,37 @@ def new_box():
                     product = products[i] if products[i] else (products[i + 1] if i + 1 < len(products) else None)
                     
                     if product and quantity:
-                        # Get LCD size - also comes in pairs
-                        lcd_size = None
-                        if product == 'LCDs' and quantity_index * 2 < len(lcd_sizes):
-                            lcd_size = lcd_sizes[quantity_index * 2] if lcd_sizes[quantity_index * 2] else (
-                                lcd_sizes[quantity_index * 2 + 1] if quantity_index * 2 + 1 < len(lcd_sizes) else None
+                        try:
+                            # Get LCD size - also comes in pairs
+                            lcd_size = None
+                            if product == 'LCDs' and quantity_index * 2 < len(lcd_sizes):
+                                lcd_size = lcd_sizes[quantity_index * 2] if lcd_sizes[quantity_index * 2] else (
+                                    lcd_sizes[quantity_index * 2 + 1] if quantity_index * 2 + 1 < len(lcd_sizes) else None
+                                )
+                            
+                            content = BoxContent(
+                                box=box,
+                                section='total',  # Use 'total' for simple boxes
+                                product_type=product,
+                                quantity=int(quantity),
+                                lcd_size=lcd_size
                             )
-                        
-                        content = BoxContent(
-                            box=box,
-                            section=section,
-                            product_type=product,
-                            quantity=int(quantity),
-                            lcd_size=lcd_size
-                        )
-                        db.session.add(content)
+                            db.session.add(content)
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Error processing content item: {e}, product={product}, quantity={quantity}")
+                            continue
                     
                     i += 2  # Skip to next pair
-        else:  # simple box type
-            products = request.form.getlist('simple_product[]')
-            quantities = request.form.getlist('simple_quantity[]')
-            lcd_sizes = request.form.getlist('simple_lcd_size[]')
             
-            # Process products in pairs (select value, custom input value)
-            i = 0
-            while i < len(products) and i // 2 < len(quantities):
-                quantity_index = i // 2
-                quantity = quantities[quantity_index] if quantity_index < len(quantities) else None
-                
-                # Get product name - either from select (even index) or custom input (odd index)
-                product = products[i] if products[i] else (products[i + 1] if i + 1 < len(products) else None)
-                
-                if product and quantity:
-                    # Get LCD size - also comes in pairs
-                    lcd_size = None
-                    if product == 'LCDs' and quantity_index * 2 < len(lcd_sizes):
-                        lcd_size = lcd_sizes[quantity_index * 2] if lcd_sizes[quantity_index * 2] else (
-                            lcd_sizes[quantity_index * 2 + 1] if quantity_index * 2 + 1 < len(lcd_sizes) else None
-                        )
-                    
-                    content = BoxContent(
-                        box=box,
-                        section='total',  # Use 'total' for simple boxes
-                        product_type=product,
-                        quantity=int(quantity),
-                        lcd_size=lcd_size
-                    )
-                    db.session.add(content)
-                
-                i += 2  # Skip to next pair
-        
-        db.session.commit()
-        flash('Box created successfully!', 'success')
-        return redirect(url_for('boxes'))
+            db.session.commit()
+            logger.info(f"Box {box_number} created successfully")
+            flash('Box created successfully!', 'success')
+            return redirect(url_for('boxes'))
+        except Exception as e:
+            db.session.rollback()
+            logger.exception(f"Error creating box: {e}")
+            flash('An error occurred while creating the box. Please try again.', 'error')
+            return redirect(url_for('new_box'))
     
     # Get the highest box number and calculate next number for pre-filling
     try:
@@ -776,6 +819,22 @@ def warehouse():
                          lcd_sizes=lcd_sizes,
                          total_weight=total_weight,
                          total_box_count=len(available_boxes))
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 Internal Server Errors"""
+    db.session.rollback()
+    logger.exception('Internal Server Error')
+    flash('An internal error occurred. Please check the logs for details.', 'error')
+    return redirect(url_for('index'))
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Handle unhandled exceptions"""
+    db.session.rollback()
+    logger.exception(f'Unhandled exception: {e}')
+    flash('An unexpected error occurred. Please check the logs for details.', 'error')
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True) 
