@@ -492,12 +492,46 @@ def new_box():
             db.session.commit()
             logger.info(f"Box {box_number} created successfully")
             flash('Box created successfully!', 'success')
-            return redirect(url_for('boxes'))
+            
+            # Calculate next box number for staying on the page
+            try:
+                numeric_boxes = db.session.query(Box.box_number).all()
+                max_number = 0
+                for box in numeric_boxes:
+                    try:
+                        number = int(box.box_number)
+                        if number > max_number:
+                            max_number = number
+                    except ValueError:
+                        continue
+                next_box_number = str(max_number + 1)
+            except:
+                next_box_number = "1"
+            
+            containers = Container.query.all()
+            return render_template('new_box.html', containers=containers, next_box_number=next_box_number, box_created=True)
         except Exception as e:
             db.session.rollback()
             logger.exception(f"Error creating box: {e}")
             flash('An error occurred while creating the box. Please try again.', 'error')
-            return redirect(url_for('new_box'))
+            
+            # Calculate next box number even on error
+            try:
+                numeric_boxes = db.session.query(Box.box_number).all()
+                max_number = 0
+                for box in numeric_boxes:
+                    try:
+                        number = int(box.box_number)
+                        if number > max_number:
+                            max_number = number
+                    except ValueError:
+                        continue
+                next_box_number = str(max_number + 1)
+            except:
+                next_box_number = "1"
+            
+            containers = Container.query.all()
+            return render_template('new_box.html', containers=containers, next_box_number=next_box_number)
     
     # Get the highest box number and calculate next number for pre-filling
     try:

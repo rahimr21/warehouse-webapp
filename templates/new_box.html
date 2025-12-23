@@ -2,36 +2,6 @@
 
 {% block title %}New Box - Warehouse Management{% endblock %}
 
-{% block extra_css %}
-<style>
-    .content-section {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.25rem;
-        margin-bottom: 1rem;
-    }
-    .product-row {
-        margin-bottom: 0.5rem;
-    }
-    .remove-row {
-        color: #dc3545;
-        cursor: pointer;
-    }
-    .box-type-section {
-        background-color: #e3f2fd;
-        padding: 1rem;
-        border-radius: 0.25rem;
-        margin-bottom: 1rem;
-    }
-    .simple-box-section {
-        background-color: #fff3e0;
-        padding: 1rem;
-        border-radius: 0.25rem;
-        margin-bottom: 1rem;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
@@ -361,5 +331,105 @@ function removeRow(button) {
         row.querySelectorAll('.custom-product').forEach(input => input.style.display = 'none');
     }
 }
+
+// Handle successful box creation - reset form and show success
+document.addEventListener('DOMContentLoaded', function() {
+    {% if box_created %}
+    // Box was just created successfully
+    const form = document.querySelector('form[method="POST"]');
+    const boxNumberInput = document.getElementById('box_number');
+    const weightInput = document.getElementById('weight');
+    const containerSelect = document.getElementById('container_id');
+    
+    // Scroll to top to show success message
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // Reset form after a short delay to let user see success message
+    setTimeout(function() {
+        // Reset box number to next suggested number
+        if (boxNumberInput && '{{ next_box_number }}') {
+            boxNumberInput.value = '{{ next_box_number }}';
+        }
+        
+        // Clear weight
+        if (weightInput) {
+            weightInput.value = '';
+        }
+        
+        // Reset container selection
+        if (containerSelect) {
+            containerSelect.selectedIndex = 0;
+        }
+        
+        // Reset box type to detailed
+        const detailedRadio = document.getElementById('detailed');
+        if (detailedRadio) {
+            detailedRadio.checked = true;
+            toggleBoxType();
+        }
+        
+        // Clear all product rows - keep only first row in each section
+        ['bottom', 'middle', 'top'].forEach(function(section) {
+            const container = document.getElementById(section + '-products');
+            if (container && container.children.length > 1) {
+                // Remove all but first row
+                while (container.children.length > 1) {
+                    container.removeChild(container.lastChild);
+                }
+                // Clear first row
+                const firstRow = container.firstElementChild;
+                if (firstRow) {
+                    firstRow.querySelectorAll('input, select').forEach(function(input) {
+                        if (input.tagName === 'SELECT') {
+                            input.selectedIndex = 0;
+                        } else {
+                            input.value = '';
+                        }
+                    });
+                    firstRow.querySelectorAll('.custom-product, .custom-lcd-size').forEach(function(input) {
+                        input.style.display = 'none';
+                        input.value = '';
+                    });
+                    firstRow.querySelectorAll('.lcd-size-select').forEach(function(select) {
+                        select.style.display = 'none';
+                        select.selectedIndex = 0;
+                    });
+                }
+            }
+        });
+        
+        // Clear simple section
+        const simpleContainer = document.getElementById('simple-products');
+        if (simpleContainer && simpleContainer.children.length > 1) {
+            while (simpleContainer.children.length > 1) {
+                simpleContainer.removeChild(simpleContainer.lastChild);
+            }
+            const firstRow = simpleContainer.firstElementChild;
+            if (firstRow) {
+                firstRow.querySelectorAll('input, select').forEach(function(input) {
+                    if (input.tagName === 'SELECT') {
+                        input.selectedIndex = 0;
+                    } else {
+                        input.value = '';
+                    }
+                });
+                firstRow.querySelectorAll('.custom-product, .custom-lcd-size').forEach(function(input) {
+                    input.style.display = 'none';
+                    input.value = '';
+                });
+                firstRow.querySelectorAll('.lcd-size-select').forEach(function(select) {
+                    select.style.display = 'none';
+                    select.selectedIndex = 0;
+                });
+            }
+        }
+        
+        // Focus on box number input for next entry
+        if (boxNumberInput) {
+            boxNumberInput.focus();
+        }
+    }, 500);
+    {% endif %}
+});
 </script>
 {% endblock %} 
